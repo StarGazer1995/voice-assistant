@@ -12,12 +12,12 @@ from langchain.prompts import PromptTemplate
 from langchain_community.llms import LlamaCpp
 from langchain.callbacks.base import BaseCallbackHandler, BaseCallbackManager
 
-LANG = "EN" # CN for Chinese, EN for English
+LANG = "CN" # CN for Chinese, EN for English
 DEBUG = True
 
 # Model Configuration
 WHISP_PATH = "models/whisper-large-v3"
-MODEL_PATH = "models/yi-34b-chat.Q8_0.gguf" # Or models/yi-chat-6b.Q8_0.gguf
+MODEL_PATH = "models/Yi-1.5-6B-Chat-GGUF/Yi-1.5-6B-Chat.q5_k.gguf" # Or models/yi-chat-6b.Q8_0.gguf
 
 # Recording Configuration
 CHUNK = 1024
@@ -97,6 +97,7 @@ class VoiceOutputCallbackHandler(BaseCallbackHandler):
         while True:
             # Wait for the next sentence
             text = self.speech_queue.get()
+            # print(text, self.speech_queue.qsize())
             if text is None:
                 self.tts_busy = False
                 continue
@@ -124,6 +125,12 @@ if __name__ == '__main__':
     with open(prompt_path, 'r', encoding='utf-8') as file:
         template = file.read().strip() # {dialogue}
     prompt_template = PromptTemplate(template=template, input_variables=["dialogue"])
+
+    p = pyaudio.PyAudio()
+
+    for i in range(p.get_device_count()):
+        info = p.get_device_info_by_index(i)
+        print(f"Device {i}: {info['name']} (input channels: {info['maxInputChannels']}, output channels: {info['maxOutputChannels']})")
 
     # Create an instance of the VoiceOutputCallbackHandler
     voice_output_handler = VoiceOutputCallbackHandler()
@@ -158,6 +165,7 @@ if __name__ == '__main__':
                 print("voice recognition failed, please try again")
                 continue
             time_ckpt = time.time()
+            # TODO: do some de-noising tasks!!!@StarGazer1995
             print("Generating...")
             dialogue += "*Q* {}\n".format(user_input)
             prompt = prompt_template.format(dialogue=dialogue)
@@ -165,6 +173,7 @@ if __name__ == '__main__':
             if reply is not None:
                 voice_output_handler.speech_queue.put(None)
                 dialogue += "*A* {}\n".format(reply)
+                print(dialogue)
                 print("%s: %s (Time %d ms)" % ("Server", reply.strip(), (time.time() - time_ckpt) * 1000))
     except KeyboardInterrupt:
         pass

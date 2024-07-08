@@ -5,8 +5,9 @@ mlx
 langchain
 langchain-community
 numba
-numpy
+numpy<2.0.0
 torch
 tqdm
 more-itertools
 tiktoken==0.3.3
+huggingface_hub
