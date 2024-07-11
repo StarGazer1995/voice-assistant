@@ -12,13 +12,13 @@ from langchain.prompts import PromptTemplate
 from langchain_community.llms import LlamaCpp
 from langchain.callbacks.base import BaseCallbackHandler, BaseCallbackManager
 
-LANG = "CN" # CN for Chinese, EN for English
+LANG = "EN" # CN for Chinese, EN for English
 DEBUG = True
 
 # Model Configuration
 WHISP_PATH = "models/whisper-large-v3"
-MODEL_PATH = "models/Yi-1.5-6B-Chat-GGUF/Yi-1.5-6B-Chat.q5_k.gguf" # Or models/yi-chat-6b.Q8_0.gguf
-
+# MODEL_PATH = "models/Yi-1.5-6B-Chat-GGUF/Yi-1.5-6B-Chat.q5_k.gguf" # Or models/yi-chat-6b.Q8_0.gguf
+MODEL_PATH = "models/llama2/llama2-13b-chat-INT4.bin"
 # Recording Configuration
 CHUNK = 1024
 FORMAT = pyaudio.paInt16
@@ -97,15 +97,16 @@ class VoiceOutputCallbackHandler(BaseCallbackHandler):
         while True:
             # Wait for the next sentence
             text = self.speech_queue.get()
-            # print(text, self.speech_queue.qsize())
+            print("queue: {}".format(text), self.speech_queue.qsize())
             if text is None:
                 self.tts_busy = False
                 continue
             self.tts_busy = True
-            self.text_to_speech(text)
+            # self.text_to_speech(text)
             self.speech_queue.task_done()
             if self.speech_queue.empty():
                 self.tts_busy = False
+                print('--------- end of queue-----------')
 
     def text_to_speech(self, text):
         try:
@@ -144,9 +145,11 @@ if __name__ == '__main__':
         n_batch=512,    # Should be between 1 and n_ctx, consider the amount of RAM of your Apple Silicon Chip.
         n_ctx=4096,     # Update the context window size to 4096
         f16_kv=True,    # MUST set to True, otherwise you will run into problem after a couple of calls
-        callback_manager=callback_manager,
+        # callback_manager=callback_manager,
         stop=["<|im_end|>"],
         verbose=False,
+        top_k=1,
+        top_p=0.9
     )
     dialogue = ""
     try:
@@ -160,20 +163,31 @@ if __name__ == '__main__':
                 time_ckpt = time.time()
                 user_input = whisper.transcribe("recordings/output.wav", path_or_hf_repo=WHISP_PATH)["text"]
                 print("%s: %s (Time %d ms)" % ("Guest", user_input, (time.time() - time_ckpt) * 1000))
+
+                time_ckpt = time.time()
+                # TODO: do some de-noising tasks!!!@StarGazer1995
+                print("Generating...")
+                dialogue += "*Q* {}\n".format(user_input)
+
+                prompt = prompt_template.format(dialogue=dialogue)
+                print('------------ prompts --------------')
+                print(prompt)
+                print('--------------end of prompts ------------')
+                reply = llm(prompt, max_tokens=4096)
+                print('-------reply------------')
+                print(reply)
+                print('-------- end of reply ----------')
+                if reply is not None:
+                    voice_output_handler.speech_queue.put(None)
+                    dialogue += "*A* {}\n".format(reply)
+                    # print('----dialogue--------')
+                    # print(dialogue)
+                    # print('------end of dialogue----')
+                    print("%s: %s (Time %d ms)" % ("Server", reply.strip(), (time.time() - time_ckpt) * 1000))
             
             except subprocess.CalledProcessError:
                 print("voice recognition failed, please try again")
                 continue
-            time_ckpt = time.time()
-            # TODO: do some de-noising tasks!!!@StarGazer1995
-            print("Generating...")
-            dialogue += "*Q* {}\n".format(user_input)
-            prompt = prompt_template.format(dialogue=dialogue)
-            reply = llm(prompt, max_tokens=4096)
-            if reply is not None:
-                voice_output_handler.speech_queue.put(None)
-                dialogue += "*A* {}\n".format(reply)
-                print(dialogue)
-                print("%s: %s (Time %d ms)" % ("Server", reply.strip(), (time.time() - time_ckpt) * 1000))
+
     except KeyboardInterrupt:
         pass
