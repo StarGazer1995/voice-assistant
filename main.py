@@ -12,7 +12,9 @@ from langchain.prompts import PromptTemplate
 from langchain_community.llms import LlamaCpp
 from langchain.callbacks.base import BaseCallbackHandler, BaseCallbackManager
 
-LANG = "EN" # CN for Chinese, EN for English
+from webscan.explorer import Explorer, default_config
+
+LANG = "CN" # CN for Chinese, EN for English
 DEBUG = True
 
 # Model Configuration
@@ -117,6 +119,9 @@ class VoiceOutputCallbackHandler(BaseCallbackHandler):
         except Exception as e:
             print(f"Error in text-to-speech: {e}")
 
+# def process_news(prompt, news):
+
+
 
 if __name__ == '__main__':
     if LANG == "CN":
@@ -126,6 +131,7 @@ if __name__ == '__main__':
     with open(prompt_path, 'r', encoding='utf-8') as file:
         template = file.read().strip() # {dialogue}
     prompt_template = PromptTemplate(template=template, input_variables=["dialogue"])
+    explorer = Explorer(debug=DEBUG)
 
     p = pyaudio.PyAudio()
 
@@ -162,6 +168,11 @@ if __name__ == '__main__':
                 print("Transcribing...")
                 time_ckpt = time.time()
                 user_input = whisper.transcribe("recordings/output.wav", path_or_hf_repo=WHISP_PATH)["text"]
+                if "新鲜事" in user_input or "新的事" in user_input:
+                    user_input = explorer.access_page(default_config)
+                    user_input = "\t".join(user_input)
+                    user_input = "请帮我总结一下面的消息：\n" + user_input
+
                 print("%s: %s (Time %d ms)" % ("Guest", user_input, (time.time() - time_ckpt) * 1000))
 
                 time_ckpt = time.time()
@@ -180,9 +191,6 @@ if __name__ == '__main__':
                 if reply is not None:
                     voice_output_handler.speech_queue.put(None)
                     dialogue += "*A* {}\n".format(reply)
-                    # print('----dialogue--------')
-                    # print(dialogue)
-                    # print('------end of dialogue----')
                     print("%s: %s (Time %d ms)" % ("Server", reply.strip(), (time.time() - time_ckpt) * 1000))
             
             except subprocess.CalledProcessError:
